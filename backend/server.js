@@ -19,7 +19,7 @@ connectDB();
 app.use(cors({
   origin: [
     process.env.FRONTEND_URL || 'http://localhost:5173',
-    'https://your-app.vercel.app', // Add your Vercel URL
+    'https://nutri-plan-cl9l-git-main-vanshs-projects-956ed412.vercel.app', // Add your Vercel URL
     'https://*.vercel.app' // Allow all Vercel preview deployments
   ],
   credentials: true,
