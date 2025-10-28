@@ -17,7 +17,11 @@ connectDB();
 
 // ✅ CORS Configuration
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: [
+    process.env.FRONTEND_URL || 'http://localhost:5173',
+    'https://your-app.vercel.app', // Add your Vercel URL
+    'https://*.vercel.app' // Allow all Vercel preview deployments
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
