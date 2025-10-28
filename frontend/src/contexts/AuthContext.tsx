@@ -7,6 +7,7 @@ interface User {
   preferences: {
     dietary_restrictions: string[];
     allergies: string[];
+    disliked_ingredients: string[];
     daily_calorie_target: number;
     daily_protein_target: number;
     daily_carbs_target: number;
@@ -17,23 +18,10 @@ interface User {
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  register: (email: string, password: string, preferences: any) => Promise<void>;
   logout: () => void;
-  updateProfile: (preferences: User['preferences']) => Promise<void>;
+  updateProfile: (preferences: any) => Promise<void>;
   loading: boolean;
-}
-
-interface RegisterData {
-  email: string;
-  password: string;
-  preferences: {
-    dietary_restrictions: string[];
-    allergies: string[];
-    daily_calorie_target: number;
-    daily_protein_target: number;
-    daily_carbs_target: number;
-    daily_fat_target: number;
-  };
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -53,32 +41,66 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (email: string, password: string) => {
     try {
+      console.log('Login attempt with:', { email });
       const response = await api.post('/auth/login', { email, password });
       
-      // FIXED: Backend returns { success: true, data: { user: {...}, token: "..." } }
+      console.log('Login response:', response.data);
+      
       const { token, user: userData } = response.data.data;
       
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(userData));
       setUser(userData);
     } catch (error: any) {
-      console.error('Login error:', error.response?.data || error.message);
+      console.error('Login error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
       throw error;
     }
   };
 
-  const register = async (data: RegisterData) => {
+  const register = async (email: string, password: string, preferences: any) => {
     try {
-      const response = await api.post('/auth/register', data);
+      console.log('Register attempt with:', { 
+        email, 
+        passwordLength: password.length,
+        preferences 
+      });
       
-      // FIXED: Backend returns { success: true, data: { user: {...}, token: "..." } }
+      const requestData = {
+        email,
+        password,
+        preferences: {
+          dietary_restrictions: preferences.dietary_restrictions || [],
+          allergies: preferences.allergies || [],
+          disliked_ingredients: preferences.disliked_ingredients || [],
+          daily_calorie_target: preferences.daily_calorie_target || 2000,
+          daily_protein_target: preferences.daily_protein_target || 50,
+          daily_carbs_target: preferences.daily_carbs_target || 250,
+          daily_fat_target: preferences.daily_fat_target || 70,
+        }
+      };
+      
+      console.log('Sending registration data:', requestData);
+      
+      const response = await api.post('/auth/register', requestData);
+      
+      console.log('Register response:', response.data);
+      
       const { token, user: userData } = response.data.data;
       
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(userData));
       setUser(userData);
     } catch (error: any) {
-      console.error('Register error:', error.response?.data || error.message);
+      console.error('Register error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        fullError: error
+      });
       throw error;
     }
   };
@@ -89,17 +111,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
   };
 
-  const updateProfile = async (preferences: User['preferences']) => {
+  const updateProfile = async (updates: { preferences: any }) => {
     try {
-      const response = await api.put('/auth/profile', { preferences });
+      console.log('Updating profile with:', updates);
+      const response = await api.put('/auth/profile', updates);
       
-      // FIXED: Backend returns { success: true, data: { user: {...} } }
+      console.log('Update profile response:', response.data);
+      
       const updatedUser = response.data.data.user;
       
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setUser(updatedUser);
     } catch (error: any) {
-      console.error('Update profile error:', error.response?.data || error.message);
+      console.error('Update profile error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
       throw error;
     }
   };

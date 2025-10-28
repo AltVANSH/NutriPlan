@@ -40,86 +40,91 @@ export default function Pantry() {
       } else {
         setIngredients([]);
       }
-    }, 300); // Debounce search
+    }, 300);
 
     return () => clearTimeout(timeoutId);
   }, [searchQuery]);
 
   const fetchPantryItems = async () => {
-  try {
-    setLoading(true);
-    const response = await api.get('/pantry');
-    
-    // FIX: Access nested data structure
-    // Backend returns: { success: true, data: { pantry: { id, items: [...] } } }
-    const pantryData = response.data?.data?.pantry?.items || [];
-    
-    // Format items to match the PantryItem interface
-    const formattedItems = pantryData.map((item: any) => ({
-      id: item._id,
-      ingredient_id: item.ingredient_id?._id || item.ingredient_id,
-      ingredient_name: item.ingredient_id?.name || 'Unknown',
-      quantity_grams: item.quantity_grams,
-      expiry_date: item.expiry_date,
-    }));
-    
-    setItems(Array.isArray(formattedItems) ? formattedItems : []);
-    
-  } catch (err: any) {
-    setError('Failed to fetch pantry items');
-    console.error(err);
-  } finally {
-    setLoading(false);
-  }
-};
-
-const searchIngredients = async () => {
-  try {
-    setSearchLoading(true);
-    const response = await api.get(`/ingredients?search=${searchQuery}`);
-    
-    console.log('Raw response:', response);
-    console.log('response.data:', response.data);
-    console.log('response.data.data:', response.data?.data);
-    
-    // Try multiple possible data locations
-    let ingredientsData = [];
-    
-    if (response.data?.data?.ingredients) {
-      ingredientsData = response.data.data.ingredients;
-      console.log('Found at response.data.data.ingredients');
-    } else if (response.data?.data) {
-      ingredientsData = response.data.data;
-      console.log('Found at response.data.data');
-    } else if (response.data?.ingredients) {
-      ingredientsData = response.data.ingredients;
-      console.log('Found at response.data.ingredients');
-    } else if (Array.isArray(response.data)) {
-      ingredientsData = response.data;
-      console.log('Found at response.data (array)');
+    try {
+      setLoading(true);
+      const response = await api.get('/pantry');
+      
+      const pantryData = response.data?.data?.pantry?.items || [];
+      
+      const formattedItems = pantryData.map((item: any) => ({
+        id: item._id,
+        ingredient_id: item.ingredient_id?._id || item.ingredient_id,
+        ingredient_name: item.ingredient_id?.name || 'Unknown',
+        quantity_grams: item.quantity_grams,
+        expiry_date: item.expiry_date,
+      }));
+      
+      setItems(Array.isArray(formattedItems) ? formattedItems : []);
+      
+    } catch (err: any) {
+      setError('Failed to fetch pantry items');
+      console.error('Pantry fetch error:', err);
+    } finally {
+      setLoading(false);
     }
-    
-    console.log('Ingredients data:', ingredientsData);
-    
-    // Format ingredients to match the Ingredient interface
-    const formattedIngredients = ingredientsData.map((ing: any) => ({
-      id: ing._id || ing.id,
-      name: ing.name,
-      category: ing.category,
-    }));
-    
-    console.log('Formatted ingredients:', formattedIngredients);
-    
-    setIngredients(Array.isArray(formattedIngredients) ? formattedIngredients : []);
-    
-  } catch (err) {
-    console.error('Failed to search ingredients:', err);
-    console.error('Error response:', err.response?.data);
-    setIngredients([]);
-  } finally {
-    setSearchLoading(false);
-  }
-};
+  };
+
+  const searchIngredients = async () => {
+    try {
+      setSearchLoading(true);
+      setError(''); // Clear previous errors
+      
+      console.log('🔍 Searching for:', searchQuery);
+      
+      const response = await api.get(`/ingredients?search=${searchQuery}`);
+      
+      console.log('📦 Full response:', response);
+      console.log('📦 response.data:', response.data);
+      
+      // ✅ SIMPLIFIED: Direct access to the correct path
+      const ingredientsData = response.data?.data?.ingredients || [];
+      
+      console.log('📦 Ingredients found:', ingredientsData.length);
+      console.log('📦 Raw ingredients:', ingredientsData);
+      
+      if (!Array.isArray(ingredientsData)) {
+        console.error('❌ Ingredients data is not an array:', typeof ingredientsData);
+        setIngredients([]);
+        setError('Invalid response from server. Please check backend.');
+        return;
+      }
+      
+      if (ingredientsData.length === 0) {
+        console.warn('⚠️ No ingredients found for query:', searchQuery);
+        setIngredients([]);
+        return;
+      }
+      
+      // Format ingredients
+      const formattedIngredients = ingredientsData.map((ing: any) => ({
+        id: ing._id || ing.id,
+        name: ing.name,
+        category: ing.category || 'other',
+      }));
+      
+      console.log('✅ Formatted ingredients:', formattedIngredients);
+      
+      setIngredients(formattedIngredients);
+      
+    } catch (err: any) {
+      console.error('❌ Search error:', err);
+      console.error('❌ Error response:', err.response?.data);
+      console.error('❌ Error status:', err.response?.status);
+      
+      const errorMsg = err.response?.data?.message || err.message || 'Search failed';
+      setError(`Search error: ${errorMsg}`);
+      setIngredients([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -147,6 +152,9 @@ const searchIngredients = async () => {
         quantity_grams: parseInt(quantity, 10),
         expiry_date: expiryDate,
       };
+      
+      console.log('Adding item:', newItem);
+      
       await api.post('/pantry', newItem);
       setSuccess('Item added successfully!');
       fetchPantryItems();
@@ -159,8 +167,9 @@ const searchIngredients = async () => {
       setExpiryDate('');
       setIngredients([]);
     } catch (err: any) {
-      setError('Failed to add item. ' + (err.response?.data?.message || ''));
-      console.error(err);
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to add item';
+      setError(`Failed to add item: ${errorMsg}`);
+      console.error('Add item error:', err);
     }
   };
 
@@ -174,8 +183,9 @@ const searchIngredients = async () => {
       setSuccess('Item deleted successfully!');
       setItems(items.filter((item) => item.id !== itemId));
     } catch (err: any) {
-      setError('Failed to delete item. ' + (err.response?.data?.message || ''));
-      console.error(err);
+      const errorMsg = err.response?.data?.message || err.message;
+      setError(`Failed to delete item: ${errorMsg}`);
+      console.error('Delete error:', err);
     }
   };
 
@@ -194,7 +204,6 @@ const searchIngredients = async () => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Auto-dismiss success messages
   useEffect(() => {
     if (success) {
       const timer = setTimeout(() => setSuccess(''), 3000);
@@ -219,6 +228,12 @@ const searchIngredients = async () => {
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-4" role="alert">
           <strong className="font-bold">Error: </strong>
           <span className="block sm:inline">{error}</span>
+          <button 
+            onClick={() => setError('')}
+            className="absolute top-2 right-2 text-red-700 hover:text-red-900"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -247,8 +262,9 @@ const searchIngredients = async () => {
                     onChange={(e) => {
                       setSearchQuery(e.target.value);
                       setSelectedIngredient(null);
+                      setError(''); // Clear error when typing
                     }}
-                    placeholder="Type to search (e.g., Chicken)"
+                    placeholder="Type to search (e.g., Chicken, Rice, Tomato)"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8B9D83] focus:border-transparent outline-none"
                     autoComplete="off"
                   />
@@ -295,10 +311,18 @@ const searchIngredients = async () => {
                   </div>
                 )}
 
-                {/* No results message */}
+                {/* No results message - IMPROVED */}
                 {searchQuery.length > 1 && ingredients.length === 0 && !selectedIngredient && !searchLoading && (
                   <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm">
-                    No ingredients found. Try a different search term.
+                    <p className="font-medium">No ingredients found for "{searchQuery}"</p>
+                    <p className="text-xs mt-1">Try: Chicken, Rice, Tomato, Onion, Garlic, etc.</p>
+                  </div>
+                )}
+                
+                {/* Search hint */}
+                {searchQuery.length > 0 && searchQuery.length <= 1 && (
+                  <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-sm">
+                    Type at least 2 characters to search
                   </div>
                 )}
               </div>

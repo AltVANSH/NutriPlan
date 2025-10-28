@@ -29,26 +29,34 @@ const userSchema = new mongoose.Schema({
         'low-carb', 
         'keto', 
         'paleo',
-        'no-cook'  // ✅ ADDED THIS
+        'no-cook'
       ]
     }],
     allergies: [String],
     disliked_ingredients: [String],
     daily_calorie_target: {
       type: Number,
-      default: 2000
+      default: 2000,
+      min: [500, 'Calorie target must be at least 500'],
+      max: [10000, 'Calorie target cannot exceed 10000']
     },
     daily_protein_target: {
       type: Number,
-      default: 50
+      default: 50,
+      min: [0, 'Protein target cannot be negative'],
+      max: [500, 'Protein target cannot exceed 500']
     },
     daily_carbs_target: {
       type: Number,
-      default: 250
+      default: 250,
+      min: [0, 'Carbs target cannot be negative'],
+      max: [1000, 'Carbs target cannot exceed 1000']
     },
     daily_fat_target: {
       type: Number,
-      default: 70
+      default: 70,
+      min: [0, 'Fat target cannot be negative'],
+      max: [500, 'Fat target cannot exceed 500']
     }
   }
 }, {
@@ -61,26 +69,52 @@ userSchema.pre('save', async function(next) {
     return next();
   }
   
-  const salt = await bcrypt.genSalt(10);
-  this.password_hash = await bcrypt.hash(this.password_hash, salt);
-  next();
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password_hash = await bcrypt.hash(this.password_hash, salt);
+    next();
+  } catch (error) {
+    next(error);
+  }
 });
-
-// Instance Methods as per Class Diagram
 
 // register() - Static method for user registration
 userSchema.statics.register = async function(email, password, preferences = {}) {
+  // Validate email
+  if (!email || !validator.isEmail(email)) {
+    throw new Error('Invalid email address');
+  }
+
+  // Validate password
+  if (!password || password.length < 6) {
+    throw new Error('Password must be at least 6 characters long');
+  }
+
   // Check if user exists
-  const existingUser = await this.findOne({ email });
+  const existingUser = await this.findOne({ email: email.toLowerCase() });
   if (existingUser) {
     throw new Error('User already exists with this email');
   }
 
-  // Create new user
+  // Create user with validated preferences
   const user = await this.create({
-    email,
+    email: email.toLowerCase(),
     password_hash: password,
-    preferences
+    preferences: {
+      dietary_restrictions: Array.isArray(preferences.dietary_restrictions) 
+        ? preferences.dietary_restrictions 
+        : [],
+      allergies: Array.isArray(preferences.allergies) 
+        ? preferences.allergies 
+        : [],
+      disliked_ingredients: Array.isArray(preferences.disliked_ingredients) 
+        ? preferences.disliked_ingredients 
+        : [],
+      daily_calorie_target: preferences.daily_calorie_target || 2000,
+      daily_protein_target: preferences.daily_protein_target || 50,
+      daily_carbs_target: preferences.daily_carbs_target || 250,
+      daily_fat_target: preferences.daily_fat_target || 70,
+    }
   });
 
   // Generate token
@@ -91,7 +125,11 @@ userSchema.statics.register = async function(email, password, preferences = {}) 
 
 // login() - Static method for user login
 userSchema.statics.login = async function(email, password) {
-  const user = await this.findOne({ email }).select('+password_hash');
+  if (!email || !password) {
+    throw new Error('Email and password are required');
+  }
+
+  const user = await this.findOne({ email: email.toLowerCase() }).select('+password_hash');
   
   if (!user) {
     throw new Error('Invalid credentials');
@@ -114,8 +152,11 @@ userSchema.statics.login = async function(email, password) {
 // updatePreferences() - Instance method
 userSchema.methods.updatePreferences = async function(newPreferences) {
   this.preferences = {
-    ...this.preferences,
-    ...newPreferences
+    ...this.preferences.toObject(),
+    ...newPreferences,
+    dietary_restrictions: newPreferences.dietary_restrictions || this.preferences.dietary_restrictions,
+    allergies: newPreferences.allergies || this.preferences.allergies,
+    disliked_ingredients: newPreferences.disliked_ingredients || this.preferences.disliked_ingredients,
   };
   await this.save();
   return this;

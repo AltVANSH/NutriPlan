@@ -9,13 +9,16 @@ const { protect } = require('../middleware/auth');
 // @route   GET /api/ingredients
 // @desc    Get all ingredients (with search)
 // @access  Private
+// @route   GET /api/ingredients
+// @desc    Get all ingredients (with search)
+// @access  Private
 router.get('/', protect, async (req, res) => {
   try {
     const { search, category } = req.query;
 
     let query = {};
 
-    // Text search using regex (works without text index)
+    // ✅ USE REGEX SEARCH (works without text index)
     if (search) {
       query.name = { $regex: search, $options: 'i' }; // Case-insensitive partial match
     }
@@ -25,7 +28,11 @@ router.get('/', protect, async (req, res) => {
       query.category = category;
     }
 
-    const ingredients = await Ingredient.find(query);
+    console.log('🔍 Ingredient search query:', query);
+    
+    const ingredients = await Ingredient.find(query).limit(20); // Limit results
+
+    console.log('📦 Found ingredients:', ingredients.length);
 
     res.json({
       success: true,
@@ -34,7 +41,7 @@ router.get('/', protect, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Ingredient search error:', error);
+    console.error('❌ Ingredient search error:', error);
     res.status(500).json({
       success: false,
       message: error.message
