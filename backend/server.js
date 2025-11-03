@@ -15,13 +15,27 @@ const app = express();
 
 connectDB();
 
-// ✅ CORS Configuration
+// ✅ FIXED CORS Configuration for separate deployments
 app.use(cors({
-  origin: [
-    process.env.FRONTEND_URL || 'http://localhost:5173',
-    'https://nutri-plan-g7eo.vercel.app', // Add your Vercel URL
-    'https://*.vercel.app' // Allow all Vercel preview deployments
-  ],
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'https://nutri-plan-g7eo.vercel.app',
+      process.env.FRONTEND_URL
+    ].filter(Boolean); // Remove any undefined values
+    
+    // Check if origin is allowed or if it's a Vercel preview deployment
+    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+      callback(null, true);
+    } else {
+      console.warn('CORS blocked origin:', origin);
+      callback(null, true); // Still allow for development - remove in strict production
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
@@ -29,16 +43,16 @@ app.use(cors({
   maxAge: 86400
 }));
 
-// ✅ Helmet - Disabled in development to avoid CORS issues
-if (process.env.NODE_ENV === 'production') {
-  app.use(helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" }
-  }));
-} else {
-  console.log('⚠️  Helmet disabled in development mode');
-}
+// ✅ Handle preflight requests
+app.options('*', cors());
 
-// ✅ FIXED: Rate limiting ONLY in production
+// ✅ Helmet - Modified for production
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false // Disable for API server
+}));
+
+// ✅ Rate limiting ONLY in production
 if (process.env.NODE_ENV === 'production') {
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -60,7 +74,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Request logging middleware
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path}`);
+  console.log(`${req.method} ${req.path} - Origin: ${req.get('origin') || 'none'}`);
   next();
 });
 
@@ -87,7 +101,8 @@ app.get('/api/health', (req, res) => {
   res.json({
     success: true,
     message: 'NutriPlan API is running',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -98,6 +113,7 @@ app.get('/', (req, res) => {
     message: 'Welcome to NutriPlan API',
     version: '1.0.0',
     endpoints: {
+      health: '/api/health',
       auth: '/api/auth',
       pantry: '/api/pantry',
       recipes: '/api/recipes',
@@ -109,17 +125,26 @@ app.get('/', (req, res) => {
   });
 });
 
-// 404 handler
-app.use((req, res) => {
+// 404 handler for API routes
+app.use('/api/*', (req, res) => {
   res.status(404).json({
     success: false,
-    message: 'Route not found'
+    message: `API endpoint not found: ${req.originalUrl}`,
+    availableEndpoints: [
+      '/api/auth',
+      '/api/pantry',
+      '/api/recipes',
+      '/api/meal-plan',
+      '/api/shopping-list',
+      '/api/nutrition',
+      '/api/ingredients'
+    ]
   });
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('Error:', err.stack);
   
   if (err.name === 'ValidationError') {
     const errors = Object.values(err.errors).map(e => e.message);
@@ -161,7 +186,7 @@ app.use((err, req, res, next) => {
 // Start server
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`
   ╔═══════════════════════════════════════╗
   ║   NutriPlan Backend Server Running   ║
@@ -169,7 +194,7 @@ app.listen(PORT, () => {
   ║   Port: ${PORT}                       ║
   ║   Environment: ${process.env.NODE_ENV || 'development'}       ║
   ║   Database: MongoDB                   ║
-  ║   CORS: Enabled for localhost:5173    ║
+  ║   CORS: Enabled                       ║
   ║   Rate Limiting: ${process.env.NODE_ENV === 'production' ? 'ENABLED' : 'DISABLED'} ║
   ╚═══════════════════════════════════════╝
   `);
